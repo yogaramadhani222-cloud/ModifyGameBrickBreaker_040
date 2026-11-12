@@ -275,3 +275,186 @@ def draw_hud(score, level, lives):
         else:
             draw_heart(screen, x, HUD_H // 2 - 3, 12, (45, 55, 80))
 
+
+# ---------------------------------------------------------------
+# Objek game
+# ---------------------------------------------------------------
+class Paddle:
+    def __init__(self):
+        self.width, self.height = 100, 14
+        self.speed = 8
+        self.x = (WIDTH - self.width) / 2
+        self.y = HEIGHT - 40
+        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        self.glow, self.pad = make_paddle_glow(self.width, self.height, CYAN)
+
+    def update(self, direction):
+        self.x += self.speed * direction
+        self.x = max(0, min(WIDTH - self.width, self.x))
+        self.rect.x = int(self.x)
+
+    def draw(self):
+        screen.blit(self.glow, (self.rect.x - self.pad, self.rect.y - self.pad))
+        r = self.rect
+        pygame.draw.rect(screen, (20, 90, 140), r.move(0, 3), border_radius=8)
+        pygame.draw.rect(screen, CYAN, r, border_radius=8)
+        pygame.draw.rect(screen, (210, 250, 255),
+                         (r.x + 8, r.y + 2, r.w - 16, 3), border_radius=2)
+
+
+class Block:
+    def __init__(self, x, y, w, h, color, health):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.color = color
+        self.health = health
+        self.max_health = health
+
+    def hit(self):
+        self.health -= 1
+
+    def draw(self):
+        r = self.rect
+        base = self.color
+        if self.health < self.max_health:
+            base = mix(base, (30, 30, 50), 0.35)
+
+        pygame.draw.rect(screen, mix(base, (0, 0, 0), 0.5),
+                         r.move(0, 3), border_radius=6)
+        pygame.draw.rect(screen, base, r, border_radius=6)
+        pygame.draw.rect(screen, mix(base, (255, 255, 255), 0.55),
+                         (r.x + 5, r.y + 3, r.w - 10, 4), border_radius=2)
+
+        if self.max_health > 1:
+            if self.health == self.max_health:
+                # blok kuat: bingkai perak
+                pygame.draw.rect(screen, (230, 235, 255), r, 2, border_radius=6)
+            else:
+                # blok retak
+                c = (20, 15, 35)
+                pygame.draw.line(screen, c, (r.x + 14, r.y + 2),
+                                 (r.x + 22, r.y + 10), 2)
+                pygame.draw.line(screen, c, (r.x + 22, r.y + 10),
+                                 (r.x + 18, r.bottom - 2), 2)
+                pygame.draw.line(screen, c, (r.x + 22, r.y + 10),
+                                 (r.x + 34, r.y + 14), 2)
+
+
+class Ball:
+    def __init__(self):
+        self.radius = 7
+        self.base_speed = 5.0
+        self.speed = self.base_speed
+        self.x = WIDTH / 2
+        self.y = HEIGHT - 60
+        self.vx = 0.0
+        self.vy = 0.0
+        self.trail = deque(maxlen=12)
+        self.wall_hit = False
+
+    @property
+    def rect(self):
+        r = self.radius
+        return pygame.Rect(int(self.x - r), int(self.y - r), r * 2, r * 2)
+
+    def stick_to(self, paddle):
+        self.x = paddle.rect.centerx
+        self.y = paddle.rect.top - self.radius - 1
+        self.vx = self.vy = 0.0
+        self.trail.clear()
+
+    def launch(self):
+        angle = math.radians(random.uniform(-25, 25))
+        self.vx = self.speed * math.sin(angle)
+        self.vy = -self.speed * math.cos(angle)
+
+    def set_direction(self, angle):
+        self.vx = self.speed * math.sin(angle)
+        self.vy = -self.speed * math.cos(angle)
+
+    def update(self):
+        """Return True jika bola jatuh ke bawah layar."""
+        self.wall_hit = False
+        self.trail.append((self.x, self.y))
+        self.x += self.vx
+        self.y += self.vy
+
+        if self.x - self.radius <= 0:
+            self.x = self.radius
+            self.vx = abs(self.vx)
+            self.wall_hit = True
+        elif self.x + self.radius >= WIDTH:
+            self.x = WIDTH - self.radius
+            self.vx = -abs(self.vx)
+            self.wall_hit = True
+
+        if self.y - self.radius <= HUD_H:
+            self.y = HUD_H + self.radius
+            self.vy = abs(self.vy)
+            self.wall_hit = True
+
+        return self.y - self.radius > HEIGHT
+
+    def draw(self):
+        # jejak bola
+        FX_LAYER.fill((0, 0, 0, 0))
+        n = len(self.trail)
+        for i, (tx, ty) in enumerate(self.trail):
+            t = (i + 1) / max(n, 1)
+            pygame.draw.circle(FX_LAYER, (*CYAN, int(90 * t)),
+                               (int(tx), int(ty)), max(1, int(self.radius * t)))
+        screen.blit(FX_LAYER, (0, 0))
+
+        # cahaya + bola
+        screen.blit(BALL_GLOW, (self.x - 22, self.y - 22))
+        pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), self.radius)
+        pygame.draw.circle(screen, CYAN, (int(self.x), int(self.y)), self.radius - 3)
+        pygame.draw.circle(screen, WHITE,
+                           (int(self.x - 2), int(self.y - 2)), 2)
+
+
+class Particle:
+    def __init__(self, x, y, color):
+        angle = random.uniform(0, math.tau)
+        speed = random.uniform(1.5, 5)
+        self.x, self.y = x, y
+        self.vx = math.cos(angle) * speed
+        self.vy = math.sin(angle) * speed - 1
+        self.life = random.randint(22, 40)
+        self.max_life = self.life
+        self.color = mix(color, WHITE, random.uniform(0, 0.5))
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.15
+        self.life -= 1
+
+    def draw(self):
+        r = max(1, int(4 * self.life / self.max_life))
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), r)
+
+
+# Fungsi pembuat level
+
+def build_blocks(level):
+    cols, bw, bh, gap = 10, 50, 20, 6
+    total = cols * bw + (cols - 1) * gap
+    left = (WIDTH - total) // 2
+    rows = min(5 + level, 8)
+    tough_chance = min(0.2 + 0.05 * (level - 1), 0.5)
+
+    blocks = []
+    for r in range(rows):
+        for c in range(cols):
+            health = 2 if random.random() < tough_chance else 1
+            blocks.append(Block(left + c * (bw + gap),
+                                HUD_H + 20 + r * (bh + gap),
+                                bw, bh, ROW_COLORS[min(r // 2, len(ROW_COLORS) - 1)], health))
+    return blocks
+
+
+def spawn_particles(particles, rect, color, amount):
+    for _ in range(amount):
+        particles.append(Particle(rect.centerx + random.randint(-15, 15),
+                                  rect.centery, color))
+
