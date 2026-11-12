@@ -235,3 +235,43 @@ class Audio:
         img = font_tiny.render(f"M : musik {state}", True, (110, 130, 165))
         screen.blit(img, img.get_rect(bottomright=(WIDTH - 10, HEIGHT - 8)))
 
+
+# ---------------------------------------------------------------
+# Fungsi gambar bantu
+# ---------------------------------------------------------------
+def draw_text(text, font, color, center, shadow=True):
+    if shadow:
+        sh = font.render(text, True, (0, 0, 0))
+        screen.blit(sh, sh.get_rect(center=(center[0] + 2, center[1] + 2)))
+    img = font.render(text, True, color)
+    rect = img.get_rect(center=center)
+    screen.blit(img, rect)
+    return rect
+
+
+def draw_heart(surf, cx, cy, s, color):
+    r = s // 2
+    pygame.draw.circle(surf, color, (cx - r, cy), r)
+    pygame.draw.circle(surf, color, (cx + r, cy), r)
+    pygame.draw.polygon(surf, color, [
+        (cx - 2 * r + 1, cy + r // 3),
+        (cx + 2 * r - 1, cy + r // 3),
+        (cx, cy + int(2.6 * r)),
+    ])
+
+
+def draw_hud(score, level, lives):
+    bar = pygame.Surface((WIDTH, HUD_H), pygame.SRCALPHA)
+    bar.fill((0, 0, 0, 120))
+    screen.blit(bar, (0, 0))
+    pygame.draw.line(screen, (*CYAN,), (0, HUD_H), (WIDTH, HUD_H), 2)
+
+    draw_text(f"SKOR  {score}", font_mid, WHITE, (85, HUD_H // 2))
+    draw_text(f"LEVEL {level}", font_mid, SOFT, (WIDTH // 2, HUD_H // 2))
+    for i in range(3):
+        x = WIDTH - 130 + i * 38
+        if i < lives:
+            draw_heart(screen, x, HUD_H // 2 - 3, 12, ACCENT)
+        else:
+            draw_heart(screen, x, HUD_H // 2 - 3, 12, (45, 55, 80))
+
