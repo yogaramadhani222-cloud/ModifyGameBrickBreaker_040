@@ -458,3 +458,159 @@ def spawn_particles(particles, rect, color, amount):
         particles.append(Particle(rect.centerx + random.randint(-15, 15),
                                   rect.centery, color))
 
+
+# ---------------------------------------------------------------
+# Game utama
+# ---------------------------------------------------------------
+def main():
+    audio = Audio()
+    combo = 0
+    paddle = Paddle()
+    ball = Ball()
+    particles = []
+
+    level, score, lives = 1, 0, 3
+    blocks = build_blocks(level)
+    state = "ready"  # ready | playing | gameover
+    ball.stick_to(paddle)
+
+    running = True
+    while running:
+        # ---------- event ----------
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                if event.key == pygame.K_m:
+                    audio.toggle_music()
+                if event.key == pygame.K_SPACE:
+                    if state == "ready":
+                        ball.launch()
+                        audio.play('launch')
+                        state = "playing"
+                    elif state == "gameover":
+                        level, score, lives = 1, 0, 3
+                        ball.speed = ball.base_speed
+                        blocks = build_blocks(level)
+                        particles.clear()
+                        ball.stick_to(paddle)
+                        state = "ready"
+
+        # ---------- update ----------
+        keys = pygame.key.get_pressed()
+        direction = 0
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            direction -= 1
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            direction += 1
+
+        if state != "gameover":
+            paddle.update(direction)
+
+        if state == "ready":
+            ball.stick_to(paddle)
+
+        elif state == "playing":
+            fell = ball.update()
+            if ball.wall_hit:
+                audio.play('wall')
+
+            # pantulan paddle (sudut tergantung posisi benturan)
+            if ball.vy > 0 and paddle.rect.colliderect(ball.rect):
+                offset = (ball.x - paddle.rect.centerx) / (paddle.width / 2)
+                offset = max(-1, min(1, offset))
+                ball.set_direction(offset * math.radians(60))
+                ball.y = paddle.rect.top - ball.radius
+                combo = 0
+                audio.play('paddle')
+
+            # tabrakan dengan blok
+            for block in blocks[:]:
+                if block.rect.colliderect(ball.rect):
+                    br, bl = block.rect, ball.rect
+                    overlap_x = min(bl.right - br.left, br.right - bl.left)
+                    overlap_y = min(bl.bottom - br.top, br.bottom - bl.top)
+                    if overlap_x < overlap_y:
+                        ball.vx *= -1
+                    else:
+                        ball.vy *= -1
+
+                    block.hit()
+                    if block.health <= 0:
+                        blocks.remove(block)
+                        score += 10
+                        combo += 1
+                        audio.play(f"note{min(combo - 1, 7)}")
+                        spawn_particles(particles, block.rect, block.color, 14)
+                    else:
+                        score += 5
+                        audio.play('block_hit')
+                        spawn_particles(particles, block.rect, block.color, 5)
+                    break
+
+            # bola jatuh
+            if fell:
+                lives -= 1
+                combo = 0
+                if lives <= 0:
+                    state = "gameover"
+                    audio.play('gameover')
+                else:
+                    audio.play('lose')
+                    state = "ready"
+                    ball.stick_to(paddle)
+
+            # level selesai
+            if not blocks and state == "playing":
+                level += 1
+                audio.play('levelup')
+                ball.speed = min(ball.base_speed + 0.6 * (level - 1), 9)
+                blocks = build_blocks(level)
+                state = "ready"
+                ball.stick_to(paddle)
+
+        for p in particles[:]:
+            p.update()
+            if p.life <= 0:
+                particles.remove(p)
+
+        # ---------- gambar ----------
+        screen.blit(BACKGROUND, (0, 0))
+
+        for block in blocks:
+            block.draw()
+        for p in particles:
+            p.draw()
+        if state != "gameover":
+            ball.draw()
+        paddle.draw()
+        draw_hud(score, level, lives)
+        audio.draw_hint()
+
+        t = pygame.time.get_ticks() / 1000
+        if state == "ready":
+            pulse = 0.6 + 0.4 * math.sin(t * 4)
+            col = mix((110, 130, 165), WHITE, pulse)
+            draw_text("Tekan SPASI untuk meluncurkan bola", font_small, col,
+                      (WIDTH // 2, HEIGHT - 90))
+        elif state == "gameover":
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((5, 3, 20, 190))
+            screen.blit(overlay, (0, 0))
+            draw_text("GAME OVER", font_big, ACCENT, (WIDTH // 2, HEIGHT // 2 - 50))
+            draw_text(f"Skor akhir: {score}", font_mid, SOFT,
+                      (WIDTH // 2, HEIGHT // 2 + 5))
+            pulse = 0.6 + 0.4 * math.sin(t * 4)
+            draw_text("Tekan SPASI untuk main lagi", font_small,
+                      mix((110, 130, 165), WHITE, pulse),
+                      (WIDTH // 2, HEIGHT // 2 + 50))
+
+        pygame.display.update()
+        clock.tick(FPS)
+
+
+if __name__ == "__main__":
+    main()
+    pygame.quit()
